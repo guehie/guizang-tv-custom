@@ -27,9 +27,9 @@ for index, source in enumerate(files):
         image = ImageOps.exif_transpose(original).convert("RGB")
         image.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
         name = f"wallpaper_{index + 1:02d}"
-        image.save(staging / f"{name}.jpg", quality=88)
+        image.save(staging / f"{name}.jpg", quality=85, optimize=True, progressive=True)
         thumb = ImageOps.fit(image, (320, 180), method=Image.Resampling.LANCZOS)
-        thumb.save(staging / f"{name}_thumb.jpg", quality=85)
+        thumb.save(staging / f"{name}_thumb.jpg", quality=78, optimize=True, progressive=True)
     catalog.append({"id": name, "name": source.stem, "file": f"local/{name}.jpg",
                     "thumb": f"local/{name}_thumb.jpg"})
 (staging / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n")

@@ -1,5 +1,4 @@
 """Wallpaper pack checks: originals, dimensions, stale assets and failed imports."""
-import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -35,7 +34,7 @@ class WallpaperPackTest(unittest.TestCase):
         for count in (1, 3, 13):
             with self.subTest(count=count):
                 folder = self.images(count, f"images-{count}")
-                before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.iterdir()}
+                before = {p.name: p.read_bytes() for p in folder.iterdir()}
                 self.assertEqual(self.run_script(folder).returncode, 0)
                 catalog = json.loads((self.output / "catalog.json").read_text())
                 self.assertEqual(len(catalog), count)
@@ -45,7 +44,7 @@ class WallpaperPackTest(unittest.TestCase):
                         self.assertLessEqual(max(image.size), 1920)
                     with Image.open(self.output / Path(entry["thumb"]).name) as image:
                         self.assertEqual(image.size, (320, 180))
-                self.assertEqual(before, {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                self.assertEqual(before, {p.name: p.read_bytes()
                                           for p in folder.iterdir()})
 
     def test_replacement_keeps_backup_but_does_not_bundle_old_images(self):
