@@ -15,6 +15,8 @@ final class HomeSurface extends FrameLayout {
     final List<View> apps = new ArrayList<>(), controls = new ArrayList<>();
     final ImageView previewPhoto;
     final TextView clock;
+    private final TextView lunar,term,weather;
+    private final MonthCalendarView calendar;
     private final HomeAppearance style;
     private final boolean preview;
     private final Actions actions;
@@ -41,7 +43,7 @@ final class HomeSurface extends FrameLayout {
         LinearLayout list;
         if(dock){
             dockShelf=new DockShelf(c,items.order.size());list=dockShelf.track;
-            LayoutParams p=new LayoutParams(dp(884),dp(156),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+            LayoutParams p=new LayoutParams(dp(884),dp(166),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
             p.bottomMargin=dp(48);addView(dockShelf,p);paintShelf();
         }else{
             list=new LinearLayout(c);list.setOrientation(LinearLayout.VERTICAL);
@@ -57,12 +59,12 @@ final class HomeSurface extends FrameLayout {
             tile.setGravity(dock?Gravity.CENTER:Gravity.CENTER_VERTICAL);tile.setPadding(dp(dock?8:14),dp(dock?8:4),dp(dock?8:18),dp(dock?8:4));
             TextView label=text(items.name(id),dock?14:style.size());label.setTypeface(style.typeface());
             label.setMaxWidth(dp(dock?116:style.get("apps")==0?510:450));
-            label.setMaxLines(1);label.setEllipsize(TextUtils.TruncateAt.END);
+            label.setMaxLines(dock?2:1);label.setEllipsize(TextUtils.TruncateAt.END);
             ImageView icon=new ImageView(c);icon.setImageDrawable(HomeIcons.get(c,id,style.ink()));
             int mode=style.get("apps");
             if(mode!=0){LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(dock?58:32),dp(dock?58:32));if(!dock)ip.rightMargin=dp(16);else ip.bottomMargin=dp(6);tile.addView(icon,ip);}
             // Icon-only mode still reveals the focused app name and keeps its accessible label.
-            tile.addView(label,new LinearLayout.LayoutParams(dock?-1:-2,dock?dp(28):-2));
+            tile.addView(label,new LinearLayout.LayoutParams(dock?-1:-2,dock?dp(38):-2));
             label.setGravity(dock?Gravity.CENTER:Gravity.CENTER_VERTICAL);
             TextView tag=text(suffix,11);tag.setAlpha(.7f);
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-2,dock?dp(16):-2);if(!dock)tp.leftMargin=dp(16);tile.addView(tag,tp);
@@ -76,8 +78,17 @@ final class HomeSurface extends FrameLayout {
                 if(focus){if(dockShelf!=null)dockShelf.reveal(tile,true);this.selected=index;actions.selected(index);for(int cIndex=0;cIndex<controls.size();cIndex++){View control=controls.get(cIndex);if(dock){control.setNextFocusDownId(tile.getId());if(cIndex==0)control.setNextFocusLeftId(tile.getId());}else control.setNextFocusLeftId(tile.getId());}}
             });
         }
-        clock=text("",26);clock.setTypeface(style.typeface());clock.setGravity(Gravity.END);
-        LayoutParams cp=new LayoutParams(dp(160),dp(45),Gravity.TOP|(dock?Gravity.START:Gravity.END));cp.topMargin=dp(45);cp.rightMargin=dp(64);if(dock){cp.leftMargin=dp(60);clock.setGravity(Gravity.START);}addView(clock,cp);
+        LinearLayout info=new LinearLayout(c);info.setOrientation(LinearLayout.VERTICAL);
+        int align=dock?Gravity.START:Gravity.END;info.setGravity(align);
+        clock=text("",34);clock.setTypeface(style.typeface());clock.setFontFeatureSettings("tnum");
+        calendar=new MonthCalendarView(c,style);
+        lunar=text("",14);term=text("",14);weather=text("",16);
+        clock.setGravity(align|Gravity.CENTER_VERTICAL);info.addView(clock,new LinearLayout.LayoutParams(-1,dp(45)));
+        info.addView(calendar,new LinearLayout.LayoutParams(-1,dp(193)));
+        TextView[] lines={lunar,term,weather};int[] heights={23,23,30};
+        for(int i=0;i<lines.length;i++){TextView line=lines[i];line.setGravity(align|Gravity.CENTER_VERTICAL);line.setMaxLines(1);line.setEllipsize(TextUtils.TruncateAt.END);line.setTypeface(style.typeface());info.addView(line,new LinearLayout.LayoutParams(-1,dp(heights[i])));}
+        lunar.setAlpha(.82f);term.setAlpha(.82f);
+        LayoutParams cp=new LayoutParams(dp(330),-2,Gravity.TOP|(dock?Gravity.START:Gravity.END));cp.topMargin=dp(35);cp.rightMargin=dp(64);if(dock)cp.leftMargin=dp(60);addView(info,cp);
         LinearLayout side=new LinearLayout(c);side.setOrientation(dock?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);side.setGravity(Gravity.END);
         LayoutParams sp=new LayoutParams(dock?-2:dp(180),-2,(dock?Gravity.TOP:Gravity.BOTTOM)|Gravity.END);sp.rightMargin=dp(64);sp.bottomMargin=dp(46);if(dock)sp.topMargin=dp(45);addView(side,sp);
         String[] names={"全部应用","其他信号源","设置"};String[] ids={"apps","inputs","settings"};
@@ -111,6 +122,10 @@ final class HomeSurface extends FrameLayout {
         wallpaper(wallpaper);
     }
     void focusApp(){apps.get(selected).requestFocus();}
+    void information(String time,long now,String lunar,String term,String weather){
+        update(clock,time);calendar.date(now);update(this.lunar,lunar);update(this.term,term);update(this.weather,weather);
+    }
+    private static void update(TextView view,String value){if(!view.getText().toString().equals(value))view.setText(value);}
     private void paint(View v,TextView label,boolean focused,boolean iconsOnly){
         v.setAlpha(focused?1f:style.faded());label.setVisibility(iconsOnly&&!focused&&style.get("layout")==0?GONE:VISIBLE);
         if(iconsOnly&&style.get("layout")==1)label.setAlpha(focused?1:0);

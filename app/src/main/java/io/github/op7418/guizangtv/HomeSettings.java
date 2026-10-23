@@ -1,11 +1,14 @@
 package io.github.op7418.guizangtv;
 
 import android.app.Dialog;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.InputFilter;
+import android.text.InputType;
 import android.text.style.AbsoluteSizeSpan;
 import android.text.style.ForegroundColorSpan;
 import android.graphics.drawable.GradientDrawable;
@@ -17,6 +20,7 @@ import java.util.*;
 final class HomeSettings {
     private final FrameHomeActivity a;
     private Dialog dialog;
+    private AlertDialog nameEditor;
     private String page="overview";
     private final Map<String,Integer> remembered=new HashMap<>();
     private final List<View> choices=new ArrayList<>();
@@ -33,13 +37,13 @@ final class HomeSettings {
     HomeSettings(FrameHomeActivity activity){a=activity;}
     boolean showing(){return dialog!=null&&dialog.isShowing();}
     String page(){return showing()?page:"closed";}
-    void time(String time){if(preview!=null)preview.clock.setText(time);}
+    void updateInfo(){if(preview!=null)a.updateInfo(preview);}
     void show(){
         if(showing())return;
         page="overview";undo.clear();
         dialog=new Dialog(a){@Override public void onBackPressed(){back();}};
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setOnDismissListener(d->{a.wallpapers.cancelPreview();a.wallpapers.cancelSelection();undo.clear();a.updateRotation();a.surface.controls.get(2).requestFocus();});
+        dialog.setOnDismissListener(d->{if(nameEditor!=null)nameEditor.dismiss();a.wallpapers.cancelPreview();a.wallpapers.cancelSelection();undo.clear();preview=null;previewHost=null;backdrop=null;content=null;stage=null;dialog=null;a.updateRotation();a.surface.controls.get(2).requestFocus();});
         dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
         dialog.getWindow().setLayout(-1,-1);
         dialog.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
@@ -94,7 +98,7 @@ final class HomeSettings {
             case "overview":
                 entry("背景", "壁纸、轮播与纯色",()->go("background"));entry("布局","列表、Dock、图标与文字",()->go("layout"));
                 entry("字体","字形与字号",()->go("type"));entry("选中样式","文字高亮与毛玻璃",()->go("focus"));
-                entry("首页内容","添加、排序、隐藏",()->go("home"));entry("电视与启动","自动进入与小米系统",()->go("tv"));break;
+                entry("首页内容","改名、添加、排序、隐藏",()->go("home"));entry("日期与天气","电视自动定位、天气刷新与数据来源",()->a.weather.show(a));entry("电视与启动","自动进入与小米系统",()->go("tv"));break;
             case "background":
                 row("背景","background",new String[]{"照片","浅色","深色"});
                 if(a.appearance.get("background")==0){entry("壁纸",a.wallpapers.name(a.wallpapers.selected()),()->go("wallpaper"));entry("轮播",a.wallpapers.rotating()?"每 "+a.wallpapers.minutes()+" 分钟":"固定壁纸",()->go("rotation"));}
@@ -115,23 +119,50 @@ final class HomeSettings {
                 note("只在照片首页显示时计时；设置页、其他应用和纯色背景会暂停轮播。选择壁纸不会改变轮播模式。");break;
             case "wallpaper":gallery();break;
             case "home":
-                note("保留 1–9 个入口。选择一项可调整位置或从首页隐藏。");
+                note("保留 1–9 个入口。选择一项可修改名称、调整位置或从首页隐藏。英文字母统一大写。");
                 for(int i=0;i<a.items.order.size();i++){String id=a.items.order.get(i);entry((i+1)+"  "+a.items.name(id),id.startsWith("hdmi:")?"HDMI "+id.substring(5):"应用",()->go("item:"+id));}
                 entry("添加入口","应用或 HDMI 信号源",()->go("add"));if(!undo.isEmpty())entry("撤销上一步","恢复本次编辑前的顺序",this::undo);break;
             case "add":
                 a.items.discover();for(String id:a.items.names.keySet())if(!a.items.order.contains(id))entry(a.items.name(id),"添加到首页末尾",()->{
                     if(a.items.order.size()>=9){a.message("首页最多保留 9 个入口");return;}List<String> next=new ArrayList<>(a.items.order);next.add(id);if(save(next))go("home");});break;
             case "tv":
-                entry("开机自动进入",BootStart.enabled(a)?"已开启":"已关闭",()->BootStart.show(a));entry("电视系统设置","网络、声音、画面等",a::systemSettings);entry("小米原桌面","打开原来的电视首页",a::stockHome);break;
+                entry("开机自动进入",BootStart.enabled(a)?"已开启":"已关闭",()->BootStart.show(a));entry("Home 键回到归藏",HomeKeyService.active()?"已启用":"未启用",()->HomeKeyService.show(a));entry("电视系统设置","网络、声音、画面等",a::systemSettings);entry("小米原桌面","打开原来的电视首页",a::stockHome);break;
             default:
                 String id=page.substring(5);int pos=a.items.order.indexOf(id);
+                entry("修改名称",a.items.name(id),()->rename(id));
                 if(pos>0)entry("上移","与上一项交换位置",()->move(id,-1));if(pos>=0&&pos<a.items.order.size()-1)entry("下移","与下一项交换位置",()->move(id,1));
                 if(a.items.order.size()>1)entry("从首页隐藏","应用仍保留在电视上",()->{List<String> next=new ArrayList<>(a.items.order);next.remove(id);if(save(next))go("home");});
                 else note("至少保留一个首页入口。");break;
         }
         if(content!=null)stage.removeView(content);content=panel;stage.addView(panel,new FrameLayout.LayoutParams(-1,-1));
         refreshPreview();background(a.wallpaperDrawable());rendering=false;
-        if(!choices.isEmpty())choices.get(Math.min(remembered.getOrDefault(page,0),choices.size()-1)).requestFocus();
+        if(!choices.isEmpty())choices.get(Math.min(remembered.containsKey(page)?remembered.get(page):0,choices.size()-1)).requestFocus();
+    }
+    private void rename(String id){
+        EditText input=new EditText(a);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(HomeItems.MAX_NAME_LENGTH)});
+        input.setText(a.items.name(id));input.selectAll();
+        input.setHint("输入入口名称");input.setContentDescription("入口名称，保存时英文字母自动大写");
+        LinearLayout field=new LinearLayout(a);field.setOrientation(LinearLayout.VERTICAL);
+        field.setPadding(a.dp(24),a.dp(12),a.dp(24),0);
+        field.addView(input,new LinearLayout.LayoutParams(-1,-2));
+        AlertDialog editor=new AlertDialog.Builder(a).setTitle("修改名称")
+                .setMessage("名称最多 24 个字符，保存时英文字母自动大写。改名不会改变应用或 HDMI 端口。")
+                .setView(field).setPositiveButton("保存",null).setNegativeButton("取消",null).create();
+        nameEditor=editor;
+        editor.setOnDismissListener(d->{nameEditor=null;if(showing()&&!choices.isEmpty())choices.get(0).requestFocus();});
+        editor.setOnShowListener(d->{
+            editor.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+                if(input.getText().toString().trim().isEmpty()){input.setError("请输入名称");input.requestFocus();return;}
+                if(!a.items.rename(id,input.getText().toString())){failed();return;}
+                editor.dismiss();a.refreshHome();render();
+            });
+            input.requestFocus();
+            editor.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        });
+        editor.show();
     }
     private void gallery(){
         for(int i=0;i<a.wallpapers.count();i++){
@@ -219,7 +250,6 @@ final class HomeSettings {
     private void refreshPreview(){
         preview=a.preview();previewHost.removeAllViews();previewHost.addView(preview,new FrameLayout.LayoutParams(a.dp(960),a.dp(540)));
         preview.setPivotX(0);preview.setPivotY(0);scalePreview(previewHost.getWidth(),previewHost.getHeight());
-        preview.clock.setText(new java.text.SimpleDateFormat("HH:mm",Locale.CHINA).format(new Date()));
     }
     private void scalePreview(int w,int h){if(preview!=null){float scale=Math.min(w/(float)a.dp(960),h/(float)a.dp(540));preview.setScaleX(scale);preview.setScaleY(scale);}}
     private boolean save(List<String> next){List<String> old=new ArrayList<>(a.items.order);if(!a.items.save(next)){failed();return false;}undo.push(old);a.refreshHome();return true;}

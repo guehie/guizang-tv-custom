@@ -87,12 +87,12 @@ final class FrameWallpapers {
         }
     }
 
-    private Bitmap decode(String file, boolean thumbnail) throws Exception {
+    private Bitmap decode(String file, int maxEdge) throws Exception {
         if (file.startsWith("builtin:")) {
             int[][] palettes = {{0xFF172B3B, 0xFFB78060}, {0xFF152C28, 0xFF6D8B68},
                     {0xFF3C302B, 0xFFC6A376}, {0xFF0B2238, 0xFF397E92}, {0xFF24203A, 0xFF866B8D}};
             int index = Integer.parseInt(file.substring(8));
-            Bitmap image = Bitmap.createBitmap(thumbnail ? 320 : 1920, thumbnail ? 180 : 1080,
+            Bitmap image = Bitmap.createBitmap(maxEdge, maxEdge * 9 / 16,
                     Bitmap.Config.ARGB_8888);
             android.graphics.Canvas canvas = new android.graphics.Canvas(image);
             android.graphics.Paint paint = new android.graphics.Paint();
@@ -101,9 +101,17 @@ final class FrameWallpapers {
             canvas.drawRect(0, 0, image.getWidth(), image.getHeight(), paint);
             return image;
         }
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
         try (InputStream stream = activity.getAssets().open("wallpapers/" + file)) {
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            BitmapFactory.decodeStream(stream, null, options);
+        }
+        if(options.outWidth<=0 || options.outHeight<=0)throw new java.io.IOException("Image unavailable");
+        options.inSampleSize=1;
+        while(Math.max(options.outWidth,options.outHeight)/options.inSampleSize>maxEdge)options.inSampleSize*=2;
+        options.inJustDecodeBounds=false;
+        options.inPreferredConfig=Bitmap.Config.ARGB_8888;
+        try (InputStream stream = activity.getAssets().open("wallpapers/" + file)) {
             Bitmap image = BitmapFactory.decodeStream(stream, null, options);
             if (image == null) throw new java.io.IOException("Image unavailable");
             return image;
@@ -118,8 +126,8 @@ final class FrameWallpapers {
         loading = true;
         worker.execute(() -> {
             Bitmap bitmap = null;
-            try { bitmap = decode(entries.get(index).file, false); }
-            catch (Exception error) { android.util.Log.e("TvHome.Wallpaper", "Decode failed", error); }
+            try { bitmap = decode(entries.get(index).file, 1920); }
+            catch (Exception | OutOfMemoryError error) { android.util.Log.e("TvHome.Wallpaper", "Decode failed", error); }
             final Bitmap image = bitmap;
             handler.post(() -> {
                 if (destroyed || request != generation) {
@@ -185,7 +193,7 @@ final class FrameWallpapers {
     }
 
     android.graphics.drawable.Drawable thumbnail(int index) {
-        try { return new android.graphics.drawable.BitmapDrawable(activity.getResources(), decode(entries.get(index).thumb,true)); }
+        try { return new android.graphics.drawable.BitmapDrawable(activity.getResources(), decode(entries.get(index).thumb,320)); }
         catch (Exception unavailable) { return null; }
     }
     int count() { return entries.size(); }
@@ -205,9 +213,10 @@ final class FrameWallpapers {
     void preview(int index, ImageView target, Runnable ready) {
         final int request=++previewGeneration;
         worker.execute(() -> {
+            if(destroyed || request!=previewGeneration)return;
             Bitmap value=null;
-            try { value=decode(entries.get(index).file,false); }
-            catch(Exception error) { android.util.Log.w("TvHome.Wallpaper","Preview unavailable",error); }
+            try { value=decode(entries.get(index).file,960); }
+            catch(Exception | OutOfMemoryError error) { android.util.Log.w("TvHome.Wallpaper","Preview unavailable",error); }
             final Bitmap image=value;
             handler.post(() -> {
                 if(destroyed || request!=previewGeneration){if(image!=null)image.recycle();return;}

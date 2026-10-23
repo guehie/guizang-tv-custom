@@ -17,6 +17,9 @@ public final class FrameHomeActivity extends Activity implements HomeSurface.Act
     HomeItems items;
     FrameWallpapers wallpapers;
     HomeSettings settings;
+    LocalWeather weather;
+    private ChineseAlmanac almanac;
+    private final SimpleDateFormat clockFormat=ChineseAlmanac.format("HH:mm:ss");
     HomeSurface surface;
     private FrameLayout root;
     private ImageView photo, transition;
@@ -24,15 +27,18 @@ public final class FrameHomeActivity extends Activity implements HomeSurface.Act
     private boolean resumed;
     private int selected;
     private final Runnable tick = new Runnable(){public void run(){
-        String time=new SimpleDateFormat("HH:mm",Locale.CHINA).format(new Date());
-        if(surface!=null)surface.clock.setText(time);
-        if(settings!=null)settings.time(time);
-        handler.postDelayed(this,60000-System.currentTimeMillis()%60000);
+        if(weather!=null)weather.refreshIfNeeded();
+        updateInfo(surface);
+        if(settings!=null)settings.updateInfo();
+        handler.postDelayed(this,1000-System.currentTimeMillis()%1000);
     }};
     @Override protected void onCreate(Bundle state){
         super.onCreate(state);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         appearance=new HomeAppearance(this);items=new HomeItems(this);
+        try{almanac=new ChineseAlmanac(getAssets().open("calendar.tsv"));}
+        catch(java.io.IOException unavailable){android.util.Log.w("GuiZangCalendar","Calendar asset unavailable",unavailable);}
+        weather=new LocalWeather(this,()->{updateInfo(surface);if(settings!=null)settings.updateInfo();});
         selected=getSharedPreferences("frame-home",0).getInt("selected",0);
         root=new FrameLayout(this);photo=new ImageView(this);transition=new ImageView(this);
         photo.setScaleType(ImageView.ScaleType.CENTER_CROP);transition.setScaleType(ImageView.ScaleType.CENTER_CROP);transition.setAlpha(0);
@@ -55,7 +61,12 @@ public final class FrameHomeActivity extends Activity implements HomeSurface.Act
         selected=restore;
         handler.removeCallbacks(tick);tick.run();updateRotation();
     }
-    HomeSurface preview(){return new HomeSurface(this,appearance,items,wallpaperDrawable(),selected,true,this);}
+    HomeSurface preview(){HomeSurface p=new HomeSurface(this,appearance,items,wallpaperDrawable(),selected,true,this);updateInfo(p);return p;}
+    void updateInfo(HomeSurface target){
+        if(target==null)return;long now=System.currentTimeMillis();
+        target.information(clockFormat.format(new Date(now)),now,almanac==null?"农历暂不可用":almanac.lunar(now),
+                almanac==null?"":almanac.term(now),weather==null?"天气加载中":weather.line());
+    }
     Drawable wallpaperDrawable(){return photo.getDrawable();}
     void updateRotation(){if(resumed&&appearance.get("background")==0&&!settings.showing()&&(library==null||!library.isShowing()))wallpapers.resume();else wallpapers.pause();}
     @Override public void selected(int index){selected=index;getSharedPreferences("frame-home",0).edit().putInt("selected",index).apply();}
@@ -75,17 +86,18 @@ public final class FrameHomeActivity extends Activity implements HomeSurface.Act
     void systemSettings(){Intent i=XiaomiControls.settings(this,Settings.ACTION_SETTINGS);if(i==null)i=new Intent(Settings.ACTION_SETTINGS);launch(i,"暂时无法打开设置");}
     private void launch(Intent i,String error){if(i==null){message(error);return;}try{startActivity(i);}catch(RuntimeException unavailable){message(error);}}
     private void showLibrary(){
-        items.discover();List<String> ids=new ArrayList<>(items.names.keySet());ids.removeIf(id->id.startsWith("hdmi:") || (getPackageManager().getLeanbackLaunchIntentForPackage(id)==null && getPackageManager().getLaunchIntentForPackage(id)==null));
-        Collator collator=Collator.getInstance(Locale.CHINA);ids.sort((a,b)->collator.compare(items.name(a),items.name(b)));
+        items.discover();List<String> ids=new ArrayList<>(items.names.keySet());
+        for(int index=ids.size()-1;index>=0;index--){String id=ids.get(index);if(id.startsWith("hdmi:") || (getPackageManager().getLeanbackLaunchIntentForPackage(id)==null && getPackageManager().getLaunchIntentForPackage(id)==null))ids.remove(index);}
+        Collator collator=Collator.getInstance(Locale.CHINA);Collections.sort(ids,(a,b)->collator.compare(items.name(a),items.name(b)));
         String[] labels=new String[ids.size()];for(int i=0;i<labels.length;i++)labels[i]=items.name(ids.get(i));
         library=new AlertDialog.Builder(this).setTitle("全部应用").setItems(labels,(d,i)->open(ids.get(i))).setNegativeButton("返回",null).create();
         library.setOnDismissListener(d->{surface.controls.get(0).requestFocus();updateRotation();});library.show();updateRotation();
     }
-    @Override protected void onResume(){super.onResume();resumed=true;BootStart.confirm(this);handler.removeCallbacks(tick);tick.run();updateRotation();}
+    @Override protected void onResume(){super.onResume();getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);resumed=true;BootStart.confirm(this);handler.removeCallbacks(tick);tick.run();updateRotation();}
     @Override protected void onNewIntent(Intent i){super.onNewIntent(i);setIntent(i);}
-    @Override protected void onPause(){resumed=false;handler.removeCallbacks(tick);wallpapers.pause();if(library!=null)library.dismiss();super.onPause();}
-    @Override protected void onDestroy(){settings.close();wallpapers.destroy();handler.removeCallbacksAndMessages(null);super.onDestroy();}
-    @Override public void onBackPressed(){if(surface.controls.contains(getCurrentFocus()))surface.focusApp();else if(XiaomiControls.enabled())stockHome();else super.onBackPressed();}
+    @Override protected void onPause(){resumed=false;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);handler.removeCallbacks(tick);wallpapers.pause();if(library!=null)library.dismiss();super.onPause();}
+    @Override protected void onDestroy(){settings.close();wallpapers.destroy();weather.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+    @Override public void onBackPressed(){surface.focusApp();}
     @Override public void dump(String prefix,java.io.FileDescriptor fd,java.io.PrintWriter out,String[] args){
         super.dump(prefix,fd,out,args);wallpapers.dump(out);BootStart.dump(this,out);
         out.println("HomeAppearance: "+appearance.prefs.getAll()+" items="+items.order+" settings="+settings.page());

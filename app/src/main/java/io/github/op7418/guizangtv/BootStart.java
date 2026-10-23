@@ -6,9 +6,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
+import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
 /** Opt-in, once-per-full-boot launch. Never handles screen-on, HDMI or Home keys. */
 public final class BootStart {
@@ -19,7 +23,24 @@ public final class BootStart {
     }
     static boolean enabled(Context c) { return prefs(c).getBoolean("enabled", false); }
     private static int bootCount(Context c) {
-        return Settings.Global.getInt(c.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+        if (Build.VERSION.SDK_INT >= 24) {
+            int boot = Settings.Global.getInt(c.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+            if (boot >= 0) return boot;
+        }
+        // API 23 has no BOOT_COUNT. A stable boot timestamp preserves the once-per-boot gate.
+        // See upstream Android 6 compatibility PR #2; never substitute a changing random token.
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/stat"))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("btime ")) {
+                    long boot = Long.parseLong(line.substring(6).trim());
+                    if (boot > 0) return (int)(boot & 0x7fffffff);
+                }
+            }
+        } catch (IOException | NumberFormatException | SecurityException unavailable) {
+            Log.w("GuiZangBoot", "Cannot read boot timestamp", unavailable);
+        }
+        return -1;
     }
     static void enter(Activity a) {
         int boot = bootCount(a);
@@ -54,14 +75,15 @@ public final class BootStart {
     }
     static void settings(Activity a, Runnable systemSettings) {
         new AlertDialog.Builder(a).setTitle("设置")
-                .setItems(new String[]{"电视系统设置", "开机自动进入：" + (enabled(a) ? "已开启" : "已关闭")},
-                        (d, i) -> { if (i == 0) systemSettings.run(); else show(a); })
+                .setItems(new String[]{"电视系统设置", "开机自动进入：" + (enabled(a) ? "已开启" : "已关闭"),
+                        "Home 键回到归藏：" + (HomeKeyService.active() ? "已启用" : "未启用")},
+                        (d, i) -> { if (i == 0) systemSettings.run(); else if (i == 1) show(a); else HomeKeyService.show(a); })
                 .setNegativeButton("返回", null).show();
     }
     static void show(Activity a) {
         if (!XiaomiControls.enabled()) {
             new AlertDialog.Builder(a).setTitle("开机自动进入（实验）")
-                    .setMessage("目前仅适配 MiTV-MTSU0。其他机型请先使用普通应用入口。")
+                    .setMessage("目前支持 MiTV-MTSU0 和 MiTV4-ANSM0 兼容配置。其他机型请先使用普通应用入口。")
                     .setNegativeButton("返回", null).show();
             return;
         }

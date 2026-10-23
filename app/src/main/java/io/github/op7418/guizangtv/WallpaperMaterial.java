@@ -6,14 +6,14 @@ import android.os.*;
 import android.util.LruCache;
 import android.view.View;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
 
 /** Registered wallpaper materials: blur once off-thread, then only crop during focus motion. */
 final class WallpaperMaterial {
+    interface Ready { void accept(Bitmap bitmap); }
     private static final ExecutorService WORKER=Executors.newSingleThreadExecutor();
     private static final Handler MAIN=new Handler(Looper.getMainLooper());
     private static final LruCache<String,Bitmap> CACHE=new LruCache<>(12);
-    static void request(Drawable source,int blur,Consumer<Bitmap> ready) {
+    static void request(Drawable source,int blur,Ready ready) {
         if(!(source instanceof BitmapDrawable)){ready.accept(null);return;}
         Bitmap original=((BitmapDrawable)source).getBitmap();
         String key=original.getGenerationId()+":"+blur;

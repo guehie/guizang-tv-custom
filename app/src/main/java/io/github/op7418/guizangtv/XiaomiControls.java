@@ -8,12 +8,12 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.provider.Settings;
 
-/** Local profile verified on MiTV-MTSU0, OS3.0.119.0.UTSMATV. */
+/** Original MiTV-MTSU0 profile and an opt-in MiTV4-ANSM0 compatibility build. */
 final class XiaomiControls {
     private XiaomiControls() { }
 
     static boolean enabled() {
-        return "MiTV-MTSU0".equals(Build.MODEL);
+        return "MiTV-MTSU0".equals(Build.MODEL) || "MiTV4-ANSM0".equals(Build.MODEL);
     }
 
     /** Observed on this firmware: source 23 = HDMI 1, source 24 = HDMI 2. */
@@ -83,17 +83,17 @@ final class XiaomiControls {
 
     static boolean startStockHome(Context context, ComponentName component) {
         if (!enabled() || !"com.mitv.tvhome".equals(component.getPackageName())) return false;
-        // The public MAIN alias is exported without HOME_STATE. The directly enumerated
-        // MainActivityUserMode target requires Xiaomi's signature permission on this firmware.
+        // Inspect the runtime permission: an alias can inherit HOME_STATE from its target
+        // even when the manifest omits an explicit permission on the alias.
         ComponentName alias = new ComponentName("com.mitv.tvhome", "com.mitv.tvhome.MainActivity");
         try {
             ActivityInfo info = context.getPackageManager().getActivityInfo(alias, 0);
             if (!info.enabled || !info.exported) return false;
             if (info.permission != null
                     && context.checkSelfPermission(info.permission) != PackageManager.PERMISSION_GRANTED)
-                return false;
+                return HomeKeyService.openStockHome();
             context.startActivity(new Intent(Intent.ACTION_MAIN).setComponent(alias)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_NO_HISTORY));
             return true;
         } catch (PackageManager.NameNotFoundException | RuntimeException unavailable) {
             android.util.Log.w("TvHome.Xiaomi", "Public Xiaomi Home entry unavailable", unavailable);
