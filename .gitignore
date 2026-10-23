@@ -15,6 +15,7 @@ __pycache__/
 *.key
 .env
 .env.*
+.device-inspection/
 *.log
 # Personal media are local build inputs, never public source.
 app/src/main/assets/wallpapers/*
@@ -23,3 +24,7 @@ app/src/main/assets/wallpapers/*
 !app/src/main/assets/wallpapers/UNSPLASH-NOTICE.txt
 # Only the five explicitly selected, source-verified photos are public assets.
 !app/src/main/assets/wallpapers/bundled/
+
+# Public CA certificates used only by the weather HTTPS client; no private keys.
+!app/src/main/assets/isrg_root_x1.pem
+!app/src/main/assets/isrg_root_x2.pem
