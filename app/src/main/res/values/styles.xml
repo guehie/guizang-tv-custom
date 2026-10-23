@@ -5,5 +5,7 @@
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:fontFamily">sans-serif</item>
     </style>
-    <string name="app_name">归藏电视</string>
+    <string name="app_name">归藏电视·自用版</string>
+    <string name="home_key_service">归藏主页键</string>
+    <string name="home_key_description">收到系统主页键通知时返回归藏，长按保持系统行为。不读取屏幕内容，不过滤其他按键。可在归藏设置中关闭。</string>
 </resources>
