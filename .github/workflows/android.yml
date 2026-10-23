@@ -1,7 +1,7 @@
 name: Android
 on:
   push:
-    branches: [main]
+    branches: [main, custom-android6]
   pull_request:
   workflow_dispatch:
 
